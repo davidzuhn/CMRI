@@ -30,6 +30,9 @@ will be called by the CMRI library when an input status needs to be read,
 or when an output is being changed.
 
 
+For more information, please visit the library home page at https://github.com/davidzuhn/CMRI/wiki
+
+
 
 
 
