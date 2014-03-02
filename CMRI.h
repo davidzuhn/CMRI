@@ -25,11 +25,10 @@ class CMRI {
     void check();
 
     void setInitHandler(bool(*initHandler) (uint8_t * data, int dataLen));
-    void setInputHandler(uint16_t numLines,
-			 bool(*inputHandler) (uint16_t line));
+    void setInputHandler(uint16_t numLines, bool(*inputHandler) (uint16_t line));
     void setOutputHandler(uint16_t numLines,
-			  void (*outputHandler) (uint16_t line,
-						 bool isOn));
+                          void (*perLineOutputHandler) (uint16_t line, bool isOn),
+                          void (*overallOutputHandler) (uint16_t numOutputs, bool outputs[]));
 
     static const int MAX_MESG_LEN = 72;
 
@@ -42,7 +41,7 @@ class CMRI {
 
   private:
     enum cmriStreamState { START, ATTN_NEXT, STX_NEXT, ADDR_NEXT,
-	TYPE_NEXT, MAYBE_DATA_NEXT, DATA_NEXT
+        TYPE_NEXT, MAYBE_DATA_NEXT, DATA_NEXT
     };
 
     void sendMessage();
@@ -57,7 +56,8 @@ class CMRI {
 
     uint16_t numOutputs;
     bool *outputs;
-    void (*outputHandler) (uint16_t line, bool isOn);
+    void (*perLineOutputHandler) (uint16_t line, bool isOn);
+    void (*overallOutputHandler) (uint16_t numOutputs, bool outputs[]);
 
 
     bool isForMe();
@@ -105,7 +105,6 @@ class CMRI {
     uint16_t bytesForLines(uint16_t lines);
 
     void setOutput(uint16_t line, bool isOn);
-
 };
 
 #endif

@@ -14,7 +14,7 @@
  */
 
 
-#include <CMRI.h>
+#include "CMRI.h"
 
 #define ATTN 0xFF
 #define STX  0x02
@@ -28,7 +28,8 @@
  * picky about the protocol (as defined in Build Your Own Universal
  * Computer Interface, 2d Edition, by Bruce Chubb).   
  *
- * I don't see a reason why this must be defined.
+ * I don't see a reason why this must be defined, but maybe you have a
+ * convincing argument
  */
 #define STRICT_PROTOCOL_CHECKING false
 
@@ -60,7 +61,8 @@ nodeId(n + 65), stream(s)
     messagesProcessed = 0;
     errorCount = 0;
     inputHandler = NULL;
-    outputHandler = NULL;
+    perLineOutputHandler = NULL;
+    overallOutputHandler = NULL;
     inputs = NULL;
     outputs = NULL;
 }
@@ -80,20 +82,20 @@ void CMRI::check()
     tickCount += 1;
 
     if (stream.available() < 1) {
-	return;
+        return;
     }
 
     while (stream.available()) {
-	int b = stream.read();
+        int b = stream.read();
 
-	if (b >= 0) {
-	    // this need
-	    nextChar((uint8_t) b);
-	} else {
-	    if (debug) {
-		debug->println("error reading from available stream");
-	    }
-	}
+        if (b >= 0) {
+            // this need
+            nextChar((uint8_t) b);
+        } else {
+            if (debug) {
+                debug->println("error reading from available stream");
+            }
+        }
     }
 }
 
@@ -114,21 +116,20 @@ void CMRI::setInitHandler(bool(*initHandler) (uint8_t * data, int datalen))
  * input poll message (P) is received
  */
 
-void CMRI::setInputHandler(uint16_t numLines,
-			   bool(*inputHandler) (uint16_t line))
+void CMRI::setInputHandler(uint16_t numLines, bool(*inputHandler) (uint16_t line))
 {
     if (this->inputHandler == NULL || inputs == NULL) {
-	if (debug) {
-	    debug->println("inputHandler set");
-	}
+        if (debug) {
+            debug->println("inputHandler set");
+        }
 
-	this->inputHandler = inputHandler;
+        this->inputHandler = inputHandler;
 
-	if (debug)
-	    debug->println("creating inputs");
+        if (debug)
+            debug->println("creating inputs");
 
-	numInputs = numLines;
-	inputs = (bool *) calloc(sizeof(bool), numInputs);
+        numInputs = numLines;
+        inputs = (bool *) calloc(sizeof(bool), numInputs);
     }
 }
 
@@ -138,17 +139,18 @@ void CMRI::setInputHandler(uint16_t numLines,
  */
 
 void CMRI::setOutputHandler(uint16_t numLines,
-			    void (*outputHandler) (uint16_t line,
-						   bool isOn))
+                            void (*perLineOutputHandler) (uint16_t line, bool isOn),
+                            void (*overallOutputHandler) (uint16_t numOutputs, bool outputs[]))
 {
-    if (outputHandler == NULL || outputs == NULL) {
-	this->outputHandler = outputHandler;
+    if (perLineOutputHandler == NULL || overallOutputHandler == NULL || outputs == NULL) {
+        this->perLineOutputHandler = perLineOutputHandler;
+        this->overallOutputHandler = overallOutputHandler;
 
-	if (debug)
-	    debug->println("creating outputs");
+        if (debug)
+            debug->println("creating outputs");
 
-	numOutputs = numLines;
-	outputs = (bool *) calloc(sizeof(bool), numOutputs);
+        numOutputs = numLines;
+        outputs = (bool *) calloc(sizeof(bool), numOutputs);
     }
 }
 
@@ -174,16 +176,16 @@ void CMRI::addDebugStream(Stream * s)
 void CMRI::printSummary()
 {
     if (debug) {
-	debug->println("CMRI communications summary");
-	debug->print("  tickCount: ");
-	debug->println(tickCount);
-	debug->print("  charCount: ");
-	debug->println(charCount);
-	debug->print("  messagesSeen: ");
-	debug->println(messagesSeen);
-	debug->print("  messagesProcessed: ");
-	debug->print(messagesProcessed);
-	debug->println("");
+        debug->println("CMRI communications summary");
+        debug->print("  tickCount: ");
+        debug->println(tickCount);
+        debug->print("  charCount: ");
+        debug->println(charCount);
+        debug->print("  messagesSeen: ");
+        debug->println(messagesSeen);
+        debug->print("  messagesProcessed: ");
+        debug->print(messagesProcessed);
+        debug->println("");
     }
 }
 
@@ -209,25 +211,24 @@ static bool getBit(uint8_t * data, uint16_t dataLen, uint16_t bit)
     uint8_t offset = bit % 8;
 
     if (byte < dataLen) {
-	value = data[byte] & (1 << offset);
+        value = data[byte] & (1 << offset);
     }
 
     return value;
 }
 
 /* Set a specific bit in an array of unsigned bytes */
-static void setBit(uint8_t * data, uint16_t dataLen, uint16_t bit,
-		   bool value)
+static void setBit(uint8_t * data, uint16_t dataLen, uint16_t bit, bool value)
 {
     uint16_t byte = bit / 8;
     uint8_t offset = bit % 8;
 
     if (byte < dataLen) {
-	if (value) {
-	    data[byte] |= 1 << offset;
-	} else {
-	    data[byte] &= ~(1 << offset);
-	}
+        if (value) {
+            data[byte] |= 1 << offset;
+        } else {
+            data[byte] &= ~(1 << offset);
+        }
     }
 }
 
@@ -252,8 +253,6 @@ CMRI::cmriStreamState CMRI::error()
 }
 
 
-
-
 /*
  * Determine whether the current message should be processed by this node.
  *
@@ -265,9 +264,9 @@ CMRI::cmriStreamState CMRI::error()
 bool CMRI::isForMe()
 {
     if (messageDest == nodeId)
-	return true;
+        return true;
     else
-	return false;
+        return false;
 }
 
 
@@ -279,26 +278,26 @@ bool CMRI::isForMe()
 void CMRI::printCurrentMessage(const char *tag)
 {
     if (debug) {
-	if (tag)
-	    debug->print(tag);
+        if (tag)
+            debug->print(tag);
 
-	debug->print(messageDest - 65);	// display user friendly value
-	debug->print("  type: 0x");
-	debug->print(messageType, HEX);
-	if (isprint(messageType)) {
-	    debug->print(" '");
-	    debug->print((char) messageType);
-	    debug->print("'");
-	}
-	debug->print("\n---- ");
+        debug->print(messageDest - 65); // display user friendly value
+        debug->print("  type: 0x");
+        debug->print(messageType, HEX);
+        if (isprint(messageType)) {
+            debug->print(" '");
+            debug->print((char) messageType);
+            debug->print("'");
+        }
+        debug->print("\n---- ");
 
-	if (messageLength > 0) {
-	    for (int i = 0; i < messageLength; i++) {
-		debug->print(buf[i], HEX);
-		debug->print(" ");
-	    }
-	    debug->println("");
-	}
+        if (messageLength > 0) {
+            for (int i = 0; i < messageLength; i++) {
+                debug->print(buf[i], HEX);
+                debug->print(" ");
+            }
+            debug->println("");
+        }
     }
 }
 
@@ -322,33 +321,33 @@ void CMRI::processMessage()
     messagesSeen += 1;
 
     if (debug) {
-	printCurrentMessage("---- complete message received: dest ");
+        printCurrentMessage("---- complete message received: dest ");
     }
     // do not process the message if it is not addressed to us
     if (!isForMe())
-	return;
+        return;
 
 
     // now do something with the message
     if (debug) {
-	debug->println("---- processing this message");
+        debug->println("---- processing this message");
     }
 
     messagesProcessed += 1;
 
     switch (messageType) {
     case 'I':
-	processInit();
-	break;
+        processInit();
+        break;
     case 'T':
-	processOutputs();
-	break;
+        processOutputs();
+        break;
     case 'P':
-	pollInputs();
-	break;
+        pollInputs();
+        break;
     default:
-	// can't do anything with this message, I don't know what it is
-	break;
+        // can't do anything with this message, I don't know what it is
+        break;
     }
 }
 
@@ -361,7 +360,7 @@ bool CMRI::addCharToMessage(uint8_t b)
 {
     // we cannot save the data if it exceeds our maximum message length
     if (messageLength >= MAX_MESG_LEN) {
-	return false;
+        return false;
     }
 
     buf[messageLength++] = b;
@@ -389,29 +388,29 @@ char *CMRI::printState(cmriStreamState state)
     char *str;
     switch (state) {
     case START:
-	str = "START";
-	break;
+        str = "START";
+        break;
     case ATTN_NEXT:
-	str = "ATTN_NEXT";
-	break;
+        str = "ATTN_NEXT";
+        break;
     case STX_NEXT:
-	str = "STX_NEXT";
-	break;
+        str = "STX_NEXT";
+        break;
     case ADDR_NEXT:
-	str = "ADDR_NEXT";
-	break;
+        str = "ADDR_NEXT";
+        break;
     case TYPE_NEXT:
-	str = "TYPE_NEXT";
-	break;
+        str = "TYPE_NEXT";
+        break;
     case MAYBE_DATA_NEXT:
-	str = "MAYBE_DATA_NEXT";
-	break;
+        str = "MAYBE_DATA_NEXT";
+        break;
     case DATA_NEXT:
-	str = "DATA_NEXT";
-	break;
+        str = "DATA_NEXT";
+        break;
     default:
-	str = "*** UNKNOWN ***";
-	break;
+        str = "*** UNKNOWN ***";
+        break;
     }
 
     return str;
@@ -429,16 +428,16 @@ char *CMRI::printState(cmriStreamState state)
 void CMRI::changeState(cmriStreamState newState, uint8_t inputChar)
 {
     if (0 && debug) {
-	debug->print("Current state: ");
-	debug->print(printState(currentState));
-	debug->print(", input char 0x");
-	debug->print((int) inputChar, HEX);
-	debug->print("  ===>  ");
-	debug->println(printState(newState));
+        debug->print("Current state: ");
+        debug->print(printState(currentState));
+        debug->print(", input char 0x");
+        debug->print((int) inputChar, HEX);
+        debug->print("  ===>  ");
+        debug->println(printState(newState));
 
-	if (newState == START) {
-	    debug->print("\n\nStart of new message processing\n");
-	}
+        if (newState == START) {
+            debug->print("\n\nStart of new message processing\n");
+        }
     }
 
     currentState = newState;
@@ -456,86 +455,94 @@ void CMRI::nextChar(uint8_t b)
 {
     charCount += 1;
 
-
     switch (currentState) {
     case START:
-	// we can only leave START with an ATTN byte
-	changeState((b == ATTN) ? ATTN_NEXT : error(), b);
-	resetMessage();
-	break;
+        // we can only leave START with an ATTN byte
+        changeState((b == ATTN) ? ATTN_NEXT : error(), b);
+        resetMessage();
+        break;
 
     case ATTN_NEXT:
-	// but we must have two of them in a row
-	changeState((b == ATTN) ? STX_NEXT : error(), b);
-	break;
+        // but we must have two of them in a row
+        changeState((b == ATTN) ? STX_NEXT : error(), b);
+        break;
 
     case STX_NEXT:
-	// two ATTNs should be followed by STX, or else we start over
-	changeState((b == STX) ? ADDR_NEXT : error(), b);
-	break;
+        // two ATTNs should be followed by STX, or else we start over
+        changeState((b == STX) ? ADDR_NEXT : error(), b);
+        break;
 
     case ADDR_NEXT:
-	// once we've started the message, the next couple of bytes
-	// are of fixed interpretation.   First comes the message
-	// destination byte
-	messageDest = (uint8_t) b;
-	changeState(TYPE_NEXT, b);
-	break;
+        // once we've started the message, the next couple of bytes
+        // are of fixed interpretation.   First comes the message
+        // destination byte
+        messageDest = (uint8_t) b;
+        changeState(TYPE_NEXT, b);
+        break;
 
     case TYPE_NEXT:
-	// and then comes the message type byte
-	messageType = b;
-	changeState(MAYBE_DATA_NEXT, b);
-	break;
+        // and then comes the message type byte
+        messageType = b;
+        changeState(MAYBE_DATA_NEXT, b);
+        break;
 
     case MAYBE_DATA_NEXT:
-	// after the destination and type comes the data portion of the
-	// message.  This portion may be empty.  To put the characters
-	// ETX, STX or DLE into the message, the byte is preceded by
-	// DLE.  
-	switch (b) {
-	case ETX:
-	    processMessage();
-	    changeState(START, b);
-	    break;
-	case DLE:
-	    changeState(DATA_NEXT, b);
-	    break;
-	default:
-	    changeState(addCharToMessage(b) ? MAYBE_DATA_NEXT : error(),
-			b);
-	    break;
-	}
-	break;
+        // after the destination and type comes the data portion of the
+        // message.  This portion may be empty.  To put the characters
+        // ETX, STX or DLE into the message, the byte is preceded by
+        // DLE.  
+        switch (b) {
+        case ETX:
+	    // we have reached the end of the message, so we do something
+	    // with it, and then start on the next one
+            processMessage();
+            changeState(START, b);
+            break;
+        case DLE:
+	    // the next character will be a data character (the DLE escapes
+	    // an ETX, STX, or DLE
+            changeState(DATA_NEXT, b);
+            break;
+        default:
+	    // if it's not a special character, then we try to add this to
+	    // the message buffer.  If that fails (the message is too long),
+	    // then this is an error.
+            changeState(addCharToMessage(b) ? MAYBE_DATA_NEXT : error(), b);
+            break;
+        }
+        break;
 
     case DATA_NEXT:
+	// the next character will be added to the message buffer, even if
+	// it is special to the protocol (in other words, a DLE escape is
+	// in effect
 
 #if STRICT_PROTOCOL_CHECKING
-	// to be completely true to the protocol, this should probably reject
-	// escaped data characters that are not STX, ETX or DLE
+        // to be completely true to the protocol, this should probably reject
+        // escaped data characters that are not STX, ETX or DLE
 
-	if ((b == STX || b == ETX || b == DLE) && addCharToMessage(b)) {
-	    changeState(MAYBE_DATA_NEXT, b);
-	} else {
-	    changeState(error(), b);
-	}
+        if ((b == STX || b == ETX || b == DLE) && addCharToMessage(b)) {
+            changeState(MAYBE_DATA_NEXT, b);
+        } else {
+            changeState(error(), b);
+        }
 #else
-	// be liberal in what you accept, strict in what you emit
+        // be liberal in what you accept, strict in what you emit
 
-	changeState(addCharToMessage(b) ? MAYBE_DATA_NEXT : error(), b);
+        changeState(addCharToMessage(b) ? MAYBE_DATA_NEXT : error(), b);
 #endif
-	break;
+        break;
 
     default:
-	// THIS CASE SHOULD NEVER HAPPEN.  I don't know what else to do
-	// here except to start reading the next message
-	if (debug) {
-	    debug->print("Unknown CMRI state transition: state is ");
-	    debug->print(currentState);
-	    debug->print(", input char is ");
-	    debug->println(b, HEX);
-	}
-	changeState(error(), b);
+        // THIS CASE SHOULD NEVER HAPPEN.  I don't know what else to do
+        // here except to start reading the next message
+        if (debug) {
+            debug->print("Unknown CMRI state transition: state is ");
+            debug->print(currentState);
+            debug->print(", input char is ");
+            debug->println(b, HEX);
+        }
+        changeState(error(), b);
     }
 }
 
@@ -551,8 +558,10 @@ void CMRI::nextChar(uint8_t b)
 void CMRI::setOutput(uint16_t line, bool isOn)
 {
     if (outputs != NULL && line < numOutputs) {
-	outputs[line] = isOn;
-	(*outputHandler) (line, isOn);
+        outputs[line] = isOn;
+        if (perLineOutputHandler != NULL) {
+            (*perLineOutputHandler) (line, isOn);
+        }
     }
 }
 
@@ -571,33 +580,33 @@ void CMRI::setOutput(uint16_t line, bool isOn)
 void CMRI::pollInputs()
 {
     if (debug) {
-	debug->println("pollInputs()");
+        debug->println("pollInputs()");
     }
 
     if (inputHandler == NULL || inputs == NULL) {
-	return;
+        return;
     }
 
     for (uint16_t i = 0; i < numInputs; i++) {
-	if (0 && debug) {
-	    debug->print("checking input ");
-	    debug->println(i);
-	}
+        if (0 && debug) {
+            debug->print("checking input ");
+            debug->println(i);
+        }
 
-	bool val = (*inputHandler) (i);
+        bool val = (*inputHandler) (i);
 
-	inputs[i] = val;
+        inputs[i] = val;
     }
 
     uint16_t messageByteCount = (numInputs / 8) + 1;
     if (messageByteCount < MAX_MESG_LEN) {
-	for (int i = 0; i < numInputs; i++) {
-	    setBit(buf, MAX_MESG_LEN, i, inputs[i]);
-	}
+        for (int i = 0; i < numInputs; i++) {
+            setBit(buf, MAX_MESG_LEN, i, inputs[i]);
+        }
 
-	messageType = 'R';
-	messageLength = messageByteCount;
-	sendMessage();
+        messageType = 'R';
+        messageLength = messageByteCount;
+        sendMessage();
     }
 }
 
@@ -613,9 +622,9 @@ void CMRI::processInit()
 {
     if (initHandler) {
 
-	bool rv = (*initHandler) (buf, messageLength);
+        bool rv = (*initHandler) (buf, messageLength);
 
-	// potentially do something with the initialization data
+        // potentially do something with the initialization data
     }
 }
 
@@ -634,29 +643,47 @@ void CMRI::processInit()
 
 void CMRI::processOutputs()
 {
+    bool anyChanges = false;
+
     if (debug) {
-	debug->println("processOutputs()");
+        debug->println("processOutputs()");
     }
 
     if (outputs == NULL) {
-	if (debug)
-	    debug->println("no outputs object");
-	return;
+        if (debug)
+            debug->println("no outputs object");
+        return;
     }
+
+
+    // go through each output bit, and see if it has changed
+    // from the last time around.  If it has, perform a callback
+    // with that state.
 
     for (uint16_t i = 0; i < numOutputs; i++) {
-	if (0 && debug) {
-	    debug->print("checking status of line ");
-	    debug->println(i);
-	}
+        if (0 && debug) {
+            debug->print("checking status of line ");
+            debug->println(i);
+        }
 
-	bool local = outputs[i];
-	bool incoming = getBit(buf, messageLength, i);
+        bool local = outputs[i];
+        bool incoming = getBit(buf, messageLength, i);
 
-	if (local != incoming) {
-	    setOutput(i, incoming);
-	}
+        if (local != incoming) {
+            anyChanges = true;
+            setOutput(i, incoming);
+        }
     }
+
+    // lastly, we call the overallOutputHandler to let the
+    // user deal with things in bulk.  This is only done if
+    // anything has changed since the last time around, and
+    // if the overallOutputHandler is actually defined.
+
+    if (anyChanges && overallOutputHandler != NULL) {
+	(*overallOutputHandler)(numOutputs, outputs);
+    }
+
 }
 
 
@@ -673,7 +700,7 @@ void CMRI::processOutputs()
 void CMRI::sendMessage()
 {
     if (debug) {
-	printCurrentMessage("---- complete message being sent: sender ");
+        printCurrentMessage("---- complete message being sent: sender ");
     }
 
     stream.write(0xff);
@@ -684,10 +711,10 @@ void CMRI::sendMessage()
     stream.write(messageType);
 
     for (int i = 0; i < messageLength; i++) {
-	if (buf[i] == ETX || buf[i] == STX || buf[i] == DLE) {
-	    stream.write(DLE);
-	}
-	stream.write(buf[i]);
+        if (buf[i] == ETX || buf[i] == STX || buf[i] == DLE) {
+            stream.write(DLE);
+        }
+        stream.write(buf[i]);
     }
 
     stream.write(ETX);
