@@ -17,8 +17,12 @@
 #include "CMRI.h"
 #include "Metro.h"
 
+// set to true if logging print statements are desired
+#define DEBUG true
 
-#define DEBUG 1                 // set to 1 if logging print statements are desired
+// set to true if the sketch should pause until the serial console is active
+#define DEBUG_CONSOLE_REQUIRED false
+
 
 // this needs to be unique on your CMRI network -- this is your C/MRI node
 // ID (this was set by dip switches on older CMRI hardware such as SUSIC or
@@ -133,10 +137,12 @@ void setup()
     Serial1.begin(57600, SERIAL_8N1);
 
 #if DEBUG
+#if DEBUG_CONSOLE_REQUIRED
     // won't run until the console is active, remove for normal operations
     while (!Serial);
-
     delay(5000);
+#endif
+
     Serial.println("starting CMRI setup");
     cmri.addDebugStream(&Serial);
 #endif
