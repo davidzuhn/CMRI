@@ -1,7 +1,7 @@
-CMRI KEYWORD1
-check KEYWORD2
-setInitHandler KEYWORD2
-setInputHandler KEYWORD2
-setOutputHandler KEYWORD2
-addDebugStream KEYWORD2
-printSummary KEYWORD2
+CMRI	KEYWORD1
+check	KEYWORD2
+setInitHandler	KEYWORD2
+setInputHandler	KEYWORD2
+setOutputHandler	KEYWORD2
+addDebugStream	KEYWORD2
+printSummary	KEYWORD2
