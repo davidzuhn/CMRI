@@ -39,5 +39,5 @@ For more information, please visit the library home page at https://github.com/d
 Information
 ===========
 If you have any questions about this code, please send me an email
-at <zoo@whitepineroute.org>, or ask on the Arduini yahoo group at
+at <zoo@blueknobby.com>, or ask on the Arduini yahoo group at
 http://groups.yahoo.com/neo/groups/Arduini/info
